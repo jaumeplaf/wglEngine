@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset="utf-8">
+    <title> wglEngine </title>
+    <link rel="stylesheet" href="wglEngine/Samples/baseScene.css">
+
+    <!-- Load all shaders here, get them by ID in current scene script-->
+    <script id="VS_02_bounce" 
+            type="x-shader/x-vertex">
+            //Attributes
+            in vec3 VertexPosition;
+            in vec4 VertexColor;
+            in vec3 VertexNormal;
+            #ifdef USE_TEXTURE_BASECOLOR
+                in vec2 TexCoords1;
+            #endif
+        
+            uniform mat4 modelMatrix;
+            uniform mat4 viewMatrix;
+            uniform mat4 projectionMatrix;
+
+            uniform vec3 cameraPosition;
+
+            uniform float time;
+
+            uniform vec4 Lposition;
+            
+            out vec4 origPos;
+            out vec4 vPos;
+            out vec4 vCol;
+            out vec4 vNorm;
+            out mat4 viewMat;
+            #ifdef USE_TEXTURE_BASECOLOR
+                out vec2 uv;
+            #endif
+        
+            #ifdef USE_ADJUGATE_NORMALS 
+            //Alternative normals calculation taken from https://github.com/graphitemaster/normals_revisited
+                
+                //Calculate the minor of a 3x3 matrix
+                float minor(mat4 m, int r0, int r1, int r2, int c0, int c1, int c2) {
+                    return m[r0][c0] * (m[r1][c1] * m[r2][c2] - m[r2][c1] * m[r1][c2]) -
+                        m[r0][c1] * (m[r1][c0] * m[r2][c2] - m[r2][c0] * m[r1][c2]) +
+                        m[r0][c2] * (m[r1][c0] * m[r2][c1] - m[r2][c0] * m[r1][c1]);
+                }
+        
+                //Calculate the cofactor matrix of a 4x4 matrix
+                mat4 cofactorMatrix(mat4 m) {
+                    mat4 cof;
+                    cof[0][0] =  minor(m, 1, 2, 3, 1, 2, 3);
+                    cof[0][1] = -minor(m, 1, 2, 3, 0, 2, 3);
+                    cof[0][2] =  minor(m, 1, 2, 3, 0, 1, 3);
+                    cof[0][3] = -minor(m, 1, 2, 3, 0, 1, 2);
+                    cof[1][0] = -minor(m, 0, 2, 3, 1, 2, 3);
+                    cof[1][1] =  minor(m, 0, 2, 3, 0, 2, 3);
+                    cof[1][2] = -minor(m, 0, 2, 3, 0, 1, 3);
+                    cof[1][3] =  minor(m, 0, 2, 3, 0, 1, 2);
+                    cof[2][0] =  minor(m, 0, 1, 3, 1, 2, 3);
+                    cof[2][1] = -minor(m, 0, 1, 3, 0, 2, 3);
+                    cof[2][2] =  minor(m, 0, 1, 3, 0, 1, 3);
+                    cof[2][3] = -minor(m, 0, 1, 3, 0, 1, 2);
+                    cof[3][0] = -minor(m, 0, 1, 2, 1, 2, 3);
+                    cof[3][1] =  minor(m, 0, 1, 2, 0, 2, 3);
+                    cof[3][2] = -minor(m, 0, 1, 2, 0, 1, 3);
+                    cof[3][3] =  minor(m, 0, 1, 2, 0, 1, 2);
+                    return cof;
+                }
+            #endif
+
+        //Declare random float (0-1)
+        float random(float seed)
+        {
+            return fract(sin(seed) * 43758.5453);
+        }
+
+        void main()
+        {
+                gl_PointSize = 7.0;
+                
+                float bounceFreq = 0.75;
+                float bounceAmount = 0.25;
+                float randAmount = 2.0;
+                float timeOffset = random(VertexColor.x * VertexColor.y * VertexColor.z) * randAmount;
+                float bounce = sin((time + timeOffset) * bounceFreq) * bounceAmount;
+
+                vec3 newPos = vec3(VertexPosition.x, VertexPosition.y + bounce, VertexPosition.z);
+                gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(newPos, 1.0);
+                vPos = gl_Position;
+                vCol = VertexColor;
+
+            #ifdef USE_ADJUGATE_NORMALS
+                mat3 normalMatrix = mat3(cofactorMatrix(modelMatrix));
+            #else
+                mat3 normalMatrix = mat3(transpose(inverse(modelMatrix)));
+            #endif
+            vNorm = vec4(normalMatrix * VertexNormal, 1.0);
+            
+            #ifdef USE_TEXTURE_BASECOLOR
+                #ifdef USE_FLIP_V
+                    uv = vec2(TexCoords1.x, 1.0 - TexCoords1.y);
+                #else
+                    uv = TexCoords1;
+                #endif
+            #endif
+            origPos = modelMatrix * vec4(newPos, 1.0);
+            viewMat = viewMatrix;
+        }
+        
+    </script>
+
+    <script id="VS_01" 
+    type="x-shader/x-vertex">
+        //Attributes
+        in vec3 VertexPosition;
+        in vec4 VertexColor;
+        in vec3 VertexNormal;
+        #ifdef USE_TEXTURE_BASECOLOR
+            in vec2 TexCoords1;
+        #endif
+    
+        uniform mat4 modelMatrix;
+        uniform mat4 viewMatrix;
+        uniform mat4 projectionMatrix;
+
+        uniform vec3 cameraPosition;
+
+        out vec4 origPos;
+        out vec4 vPos;
+        out vec4 vCol;
+        out vec4 vNorm;
+        out mat4 viewMat;
+        #ifdef USE_TEXTURE_BASECOLOR
+            out vec2 uv;
+        #endif
+    
+        #ifdef USE_ADJUGATE_NORMALS 
+        //Alternative normals calculation taken from https://github.com/graphitemaster/normals_revisited
+            
+            //Calculate the minor of a 3x3 matrix
+            float minor(mat4 m, int r0, int r1, int r2, int c0, int c1, int c2) {
+                return m[r0][c0] * (m[r1][c1] * m[r2][c2] - m[r2][c1] * m[r1][c2]) -
+                    m[r0][c1] * (m[r1][c0] * m[r2][c2] - m[r2][c0] * m[r1][c2]) +
+                    m[r0][c2] * (m[r1][c0] * m[r2][c1] - m[r2][c0] * m[r1][c1]);
+            }
+    
+            //Calculate the cofactor matrix of a 4x4 matrix
+            mat4 cofactorMatrix(mat4 m) {
+                mat4 cof;
+                cof[0][0] =  minor(m, 1, 2, 3, 1, 2, 3);
+                cof[0][1] = -minor(m, 1, 2, 3, 0, 2, 3);
+                cof[0][2] =  minor(m, 1, 2, 3, 0, 1, 3);
+                cof[0][3] = -minor(m, 1, 2, 3, 0, 1, 2);
+                cof[1][0] = -minor(m, 0, 2, 3, 1, 2, 3);
+                cof[1][1] =  minor(m, 0, 2, 3, 0, 2, 3);
+                cof[1][2] = -minor(m, 0, 2, 3, 0, 1, 3);
+                cof[1][3] =  minor(m, 0, 2, 3, 0, 1, 2);
+                cof[2][0] =  minor(m, 0, 1, 3, 1, 2, 3);
+                cof[2][1] = -minor(m, 0, 1, 3, 0, 2, 3);
+                cof[2][2] =  minor(m, 0, 1, 3, 0, 1, 3);
+                cof[2][3] = -minor(m, 0, 1, 3, 0, 1, 2);
+                cof[3][0] = -minor(m, 0, 1, 2, 1, 2, 3);
+                cof[3][1] =  minor(m, 0, 1, 2, 0, 2, 3);
+                cof[3][2] = -minor(m, 0, 1, 2, 0, 1, 3);
+                cof[3][3] =  minor(m, 0, 1, 2, 0, 1, 2);
+                return cof;
+            }
+        #endif
+
+    void main()
+    {
+            gl_PointSize = 7.0;
+
+            
+            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(VertexPosition, 1.0);
+            vPos = gl_Position;
+            vCol = VertexColor;
+
+        #ifdef USE_ADJUGATE_NORMALS
+            mat3 normalMatrix = mat3(cofactorMatrix(modelMatrix));
+        #else
+            mat3 normalMatrix = mat3(transpose(inverse(modelMatrix)));
+        #endif
+        vNorm = vec4(normalMatrix * VertexNormal, 1.0);
+        
+        #ifdef USE_TEXTURE_BASECOLOR
+            #ifdef USE_FLIP_V
+                uv = vec2(TexCoords1.x, 1.0 - TexCoords1.y);
+            #else
+                uv = TexCoords1;
+            #endif
+        #endif
+        origPos = modelMatrix * vec4(VertexPosition, 1.0);
+        viewMat = viewMatrix;
+    }
+    
+    </script>
+
+    <script id="FS_01"
+        type="x-shader/x-fragment">
+        precision mediump float;
+
+        //Structs
+        struct LightData {
+            vec4 La;
+            vec4 Ld;
+            vec4 Ls;
+            vec4 Lpos;
+            float Lintensity;
+            float Lradius;
+        };
+
+        struct MaterialData {
+            vec4 Ma;
+            vec4 Md;
+            vec4 Ms;
+            float shininess;
+        };
+        
+        //Attributes
+        in vec4 vCol;
+        in vec4 vNorm;
+        in vec4 origPos;
+        in vec4 vPos;
+        in mat4 viewMat;
+        #ifdef USE_TEXTURE_BASECOLOR
+        in vec2 uv;
+        #endif
+        
+        //Uniforms
+        #ifdef USE_FOG
+        uniform vec4 fogColor;
+        uniform float nPlane;
+        uniform float fPlane;
+        uniform float fogAmount;
+        uniform float fogPower;
+        #endif
+
+        uniform float celShading;
+        uniform float celSteps;
+        uniform float celContrast;
+        
+        uniform sampler2D t_baseColor;
+        uniform sampler2D t_normalMap;
+
+        uniform MaterialData Material; //Material data
+        uniform LightData Lights[MAX_LIGHTS]; //Array of lights, of size MAX_LIGHTS (defined in the shader preprocessor)
+        uniform int numLights; //Number of lights in the scene
+
+        uniform float isPoint;
+        
+        //Out fragment color
+        out vec4 fragmentColor;
+        
+        float saturate(float value)
+        {
+            return clamp(value, 0.0, 1.0);
+        }
+
+        vec3 saturate3(vec3 value)
+        {
+            float x = clamp(value.x, 0.0, 1.0);
+            float y = clamp(value.y, 0.0, 1.0);
+            float z = clamp(value.z, 0.0, 1.0);
+            return vec3(x, y, z);
+        }
+
+        vec4 saturate4(vec4 value)
+        {
+            float x = clamp(value.x, 0.0, 1.0);
+            float y = clamp(value.y, 0.0, 1.0);
+            float z = clamp(value.z, 0.0, 1.0);
+            float w = clamp(value.w, 0.0, 1.0);
+            return vec4(x, y, z, w);
+        }
+
+        float random (vec2 st) 
+        {
+            return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+        }
+
+        // 2D Noise based on Morgan McGuire @morgan3d
+        // https://www.shadertoy.com/view/4dS3Wd
+        float noise (vec2 st) 
+        {
+            float scale = 1.0;
+            float power = 0.5;
+            st = st * scale;
+            vec2 i = floor(st);
+            vec2 f = fract(st);
+
+            // Four corners in 2D of a tile
+            float a = random(i);
+            float b = random(i + vec2(1.0, 0.0));
+            float c = random(i + vec2(0.0, 1.0));
+            float d = random(i + vec2(1.0, 1.0));
+
+            // Smooth Interpolation
+
+            // Cubic Hermine Curve.  Same as SmoothStep()
+            vec2 u = f*f*(3.0-2.0*f);
+            // u = smoothstep(0.,1.,f);
+
+            // Mix 4 coorners percentages
+            float mixC = mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+            return saturate(pow(mixC, power));
+        }
+
+        float remap(float value, float low1, float high1, float low2, float high2)
+        {
+            return low2 + (value - low1) * (high2 - low2) / (high1 - low1);
+        }
+
+        #ifdef USE_FOG
+            float linearDepth(float inDepth)
+            {
+                float z = inDepth * 2.0 - 1.0;
+                return (2.0 * nPlane * fPlane) / (fPlane + nPlane - z * (fPlane - nPlane));
+            }
+        #endif
+
+        vec4 cel(vec4 color, float steps, float contrast)
+        {
+            vec4 pColor = vec4(pow(color.x, contrast), pow(color.y, contrast), pow(color.z, contrast), 1.0);
+            vec4 fColor = saturate4(pColor);
+            vec4 quantize = floor(fColor * steps) / steps;
+            return quantize;
+        }
+
+        vec4 phong(vec3 V, vec3 N) //Ma, Md, Ms, shininess, La, Ld, Ls, Lintensity
+        {
+            vec4 fAmbient = vec4(0.0);
+            vec4 fDiffuse = vec4(0.0);
+            vec4 fSpecular = vec4(0.0);
+            vec4 fDist = vec4(0.0);
+            //Loop through all lights
+            for(int i = 0; i < numLights; i++){
+                
+                //vec4 finalLpos = viewMat * Lights[i].Lpos;
+                float dist = length(Lights[i].Lpos.xyz - origPos.xyz);
+                vec3 lightPath = Lights[i].Lpos.xyz - origPos.xyz;
+                vec3 L = normalize(lightPath); 
+
+                vec4 ambient = Lights[i].La * Material.Ma * Lights[i].Lintensity;
+                vec4 diffuse = vec4(0.0);
+                vec4 specular = vec4(0.0);
+                
+                float NdotL = max(dot(N, L), 0.0);
+                
+                vec3 R = reflect(L, N);
+                
+                float RdotV = 0.0;
+                if(NdotL > 0.0) {
+                    float specBase = max(dot(R, V), 0.0);
+                    RdotV = pow(specBase, Material.shininess) * smoothstep(0.0, 0.1, NdotL);
+                }
+                vec4 mixedDiffuse = Material.Md * vCol;
+                diffuse = NdotL * (Lights[i].Ld * mixedDiffuse) * Lights[i].Lintensity;
+                specular = RdotV * (Lights[i].Ls * Material.Ms) * Lights[i].Lintensity;
+                float cDist = clamp(dist, 0.0, Lights[i].Lradius); //Clamp distance to light radius
+                float nDist = remap(cDist, 0.0, Lights[i].Lradius, 1.0, 0.0); //Remap distance to 0-1
+
+                fAmbient += ambient * nDist;
+                fDiffuse += diffuse * nDist;
+                fSpecular += specular * nDist;
+            }
+
+            return (fAmbient + fDiffuse + fSpecular);
+        }
+
+        void main() 
+        {
+
+            vec3 V = normalize(-vPos.xyz);
+            vec3 N = normalize(vNorm.xyz); // Ensure normal is normalized
+
+            //Phong
+            vec3 phongColor = phong(V, N).xyz;
+
+            #ifdef USE_TEXTURE_BASECOLOR
+                vec3 baseColor = texture(t_baseColor, uv).xyz;
+            #else
+                #ifdef USE_VERTEX_COLOR_TINT
+                    #ifdef USE_NOISE
+                        vec3 baseColor = saturate3(vCol.xyz * mix(vec3(0.2, 0.2, 0.6), vec3(0.6, 0.6, 1.0), noise(origPos.xy)));
+                    #else
+                        vec3 baseColor = vCol.xyz;
+                    #endif
+                #else
+                    #ifdef USE_NOISE
+                        vec3 baseColor = mix(vec3(0.2, 0.2, 0.6), vec3(0.6, 0.6, 1.0), noise(origPos.xy)));
+                    #else
+                        vec3 baseColor = vec3(1.0);
+                    #endif
+                #endif
+            #endif
+
+            vec3 combinedColor = baseColor * phongColor;
+
+            #ifdef USE_FOG
+                float depth = linearDepth(gl_FragCoord.z) / fPlane;
+                float correctedDepth = saturate(pow(depth * fogAmount, fogPower));
+                vec4 vDepth = vec4(vec3(correctedDepth), 1.0);
+            #endif
+        
+            #ifdef USE_TEXTURE_BASECOLOR
+                vec4 midColor = vec4(combinedColor, 1.0);
+            #else
+                vec4 midColor = vec4(combinedColor, 1.0);
+            #endif
+
+            
+            #ifdef USE_FOG
+                vec4 finalColor = mix(midColor, fogColor, correctedDepth);
+            #else
+                vec4 finalColor = midColor;
+            #endif
+        
+            if(isPoint == 1.0){
+                fragmentColor = vec4(1.0, 1.0, 0.0, 1.0);
+            }
+            else if(isPoint == 2.0){
+                fragmentColor = vec4(N, 1.0);
+            }
+            else if(celShading == 1.0){
+                fragmentColor = cel(finalColor, celSteps, celContrast);
+            }
+            else{
+                    fragmentColor = finalColor;
+            }
+        }
+
+    </script>
+    
+    </head>
+
+    <body>
+        <div id="container">
+            <canvas id="wglCanvas" width="1500" height="850">
+                HTML5 not supported
+            </canvas>
+            <div id="menu">
+                <div class = "UI_counter">
+                    <span>fps: </span><span class ="counter" id="fpsCounter">"fps" </span><br>
+                    <span>frame time: </span><span class="counter" id ="frameTime">"frame time" </span><br>
+                </div>
+                <!-- Fog controls -->
+                <span class="separator">Fog:</span>
+                <div class="indent">
+                    <label for="fogColor">Fog color</label>
+                    <br>
+                    <input type="color" id="fogColor" value="#444444">
+                </div>
+                <div class="slidercontainer indent">
+                    <label for="fogAmount">Fog amount:</label>
+                    <br>
+                    <input type="range" min="0.0" max="20.0" value="0.1" step="0.01" class="slider" id="fogAmount">
+                </div>
+                <div class="slidercontainer indent">
+                    <label for="fogPower">Fog power:</label>
+                    <br>
+                    <input type="range" min="0.05" max="2.0" value="0.2" step="0.01" class="slider" id="fogPower">
+                </div>
+                <span class="separator">Camera:</span>
+                <div class="indent">
+                    <div class="slidercontainer">
+                        <label for="fov">FOV: </label><span id="displayFov">"fov" </span><br>
+                    </div>           
+                    <input type="range" min="20.0" max="120.0" value="70.0" step="0.01" class="slider" id="fov">
+                </div>
+                <span class="separator">Shading:</span>
+                <div class="indent">
+                    <label for="celShad">Cel shading: </label>
+                    <input type="checkbox" id="celShad">
+                    <div class="slidercontainer">
+                        <label for="celSteps">Steps: </label><span id="displayCelSteps">"steps" </span><br>
+                    </div>           
+                    <input type="range" min="1.0" max="16.0" value="3.0" step="1.0" class="slider" id="celSteps">
+                    <div class="slidercontainer">
+                        <label for="celContrast">Contrast: </label><span id="displayCelContrast">"contrast" </span><br>
+                    </div>           
+                    <input type="range" min="0.75" max="5.0" value="1.0" step="0.01" class="slider" id="celContrast">
+                </div>
+                <span class="separator">Lighting:</span>
+                <div class="indent">
+                    <select id="lights">
+                        <!-- Options will be dynamically added here -->
+                    </select>
+                    <br>
+                    <div class="slidercontainer">
+                        <label for="lightIntensity">Intensity: </label><span id="displayLightIntensity">"Int" </span><br>
+                    </div>           
+                    <input type="range" min="0.0" max="25.0" value="1.0" step="0.005" class="slider" id="lightIntensity">
+                    <br>
+                    <div class="slidercontainer">
+                        <label for="lightRadius">Radius: </label><span id="displayLightRadius">"Rad" </span><br>
+                    </div>           
+                    <input type="range" min="10.0" max="500.0" value="400.0" step="0.01" class="slider" id="lightRadius">
+                    <br>
+                    <div class="slidercontainer">
+                        <label for="lightPositionX">Position X: </label><span id="displaylightPositionX">"PosX" </span><br>
+                    </div>           
+                    <input type="range" min="-1000.0" max="500.0" value="1.0" step="0.005" class="slider" id="lightPositionX">
+                    <br>
+                    <div class="slidercontainer">
+                        <label for="lightPositionY">Position Y: </label><span id="displaylightPositionY">"PosY" </span><br>
+                    </div>           
+                    <input type="range" min="-10.0" max="300.0" value="1.0" step="0.005" class="slider" id="lightPositionY">
+                    <br>
+                    <div class="slidercontainer">
+                        <label for="lightPositionZ">Position Z: </label><span id="displaylightPositionZ">"PosZ" </span><br>
+                    </div>           
+                    <input type="range" min="-1000.0" max="500.0" value="1.0" step="0.005" class="slider" id="lightPositionZ">
+                    <br>
+                    <label for="La">Ambient value: </label>
+                    <input type="color" id="La" value="#ffffff">
+                    <br>
+                    <label for="Ld">Diffuse value: </label>
+                    <input type="color" id="Ld" value="#ffffff">
+                    <br>
+                    <label for="Ls">Specular value: </label>
+                    <input type="color" id="Ls" value="#ffffff">
+                </div>
+            </div>
+        </div>
+
+  <!-- Load external libraries -->
+  <script src = "wglEngine/Resources/Scripts/gl-matrix-min.js"></script>
+
+  <!-- Load model files -->
+  <script src = "wglEngine/Resources/Models/Basic/basicMeshes.json"></script>
+  <script src = "wglEngine/Resources/Models/Ruins/woodTrimMeshes2.json"></script>
+  <script src = "wglEngine/Resources/Models/Ruins/fishMeshes01.json"></script>
+  
+  
+  <!-- Load engine scripts -->
+  <script src = "wglEngine/resources.js"></script>
+  <script src = "wglEngine/input.js"></script>
+  <script src = "wglEngine/output.js"></script>
+  <script src = "wglEngine/renderer.js"></script>
+  <script src = "wglEngine/utils.js"></script>
+  <script src = "wglEngine/materials.js"></script>
+  <script src = "wglEngine/camera.js"></script>
+  <script src = "wglEngine/player.js"></script>
+  <script src = "wglEngine/scene.js"></script>
+  <script src = "wglEngine/gameObject.js"></script>
+  <script src = "wglEngine/lights.js"></script>
+  <!-- Load current scene script -->
+  <script src = "wglEngine/Samples/initializeResources.js"></script>
+  <script src = "wglEngine/Samples/baseScene.JS"></script>
+
+</body>
+
+</html>
